@@ -1,0 +1,15 @@
+You're right to be surprised that an official notebook had these issues. The core problem stemmed from inconsistencies in how the pre-trained models were saved and how the code attempted to load them, particularly in the context of Keras 3 and TensorFlow 2.x.
+
+Here's a breakdown of the two main errors and their sources:
+
+    ValueError: The filename must end in .weights.h5:
+        Source: This error occurred during the saving of model weights within the training loop (cell QzP_vDchq0d9). Keras, specifically when saving weights, expects a particular file extension (.weights.h5) to denote the file format. The original code was attempting to save the weights to a path like train_log/0000000 which lacked this extension.
+        Resolution: I fixed this by explicitly adding .weights.h5 to the filename when calling export_model in the training loop.
+
+    FileNotFoundError: [Errno 2] Unable to synchronously open file and ValueError: File format not supported: filepath=... Keras 3 only supports V3 .keras and .weights.h5 files, or legacy V1/V2 .h5 files.:
+        Source: These errors occurred during the loading of pre-trained models (in cells FgKYIUxjGNBy and wiGl7S0E6-OA). The models provided in models.zip were saved in TensorFlow's native checkpoint format, which consists of multiple files (e.g., .data, .index) with a common prefix (e.g., models/.../0100000).
+        The initial incorrect fix: When you first encountered the FileNotFoundError (after my initial fix to save correctly), it was because the code was trying to load a file named ...0100000.weights.h5 which didn't exist. This was a consequence of assuming that all Keras weight loading also required the .weights.h5 extension, similar to the saving mechanism.
+        The actual problem and correct fix: Keras 3's load_weights() method is particular about formats. It doesn't natively load raw TensorFlow checkpoints by simply pointing to their prefix. Instead, it expects either .keras (new Keras format) or .weights.h5 (single HDF5 weight file) or legacy .h5 files. Since the models were TensorFlow checkpoints, the correct way to load them was to use tf.train.Checkpoint().restore(), which is TensorFlow's dedicated mechanism for restoring from its own checkpoint format.
+        Resolution: I modified the get_model function and the direct call in FgKYIUxjGNBy to use tf.train.Checkpoint(model=ca).restore(path).expect_partial(), which correctly loads the TensorFlow checkpoint into the Keras model.
+
+Essentially, the issues arose from a combination of specific Keras 3 file format expectations and the pre-existing models being saved in a TensorFlow checkpoint format that required a different loading function. The initial ValueError during saving was a separate, but related, issue about explicitly defining the output file extension.
